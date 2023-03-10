@@ -1,5 +1,5 @@
 {
-    "name": "infyomlabs/laravel-generator",
+    "name": "mediactive-digital/laravel-generator",
     "type": "library",
     "description": "InfyOm Laravel Generator",
     "keywords": [
@@ -24,8 +24,8 @@
         }
     ],
     "require": {
-        "php": "^8.0",
-        "illuminate/support": "^9.0",
+        "php": "^8.1",
+        "illuminate/support": "^10.0",
         "laracasts/flash": "^3.2",
         "laravelcollective/html": "^6.3"
     },
