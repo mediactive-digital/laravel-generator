@@ -9,6 +9,8 @@ use Illuminate\Support\Str;
 use InfyOm\Generator\Common\GeneratorField;
 use InfyOm\Generator\Common\GeneratorFieldRelation;
 
+use Schema;
+
 class GeneratorForeignKey
 {
     /** @var string */
@@ -61,30 +63,11 @@ class TableFieldsGenerator
         $this->tableName = $tableName;
         $this->ignoredFields = $ignoredFields;
 
-        if (!empty($connection)) {
-            $this->schemaManager = DB::connection($connection)->getDoctrineSchemaManager();
-        } else {
-            $this->schemaManager = DB::getDoctrineSchemaManager();
-        }
-
-        $platform = $this->schemaManager->getDatabasePlatform();
-        $defaultMappings = [
-            'enum' => 'string',
-            'json' => 'text',
-            'bit'  => 'boolean',
-        ];
-
-        $mappings = config('infyom.laravel_generator.from_table.doctrine_mappings', []);
-        $mappings = array_merge($mappings, $defaultMappings);
-        foreach ($mappings as $dbType => $doctrineType) {
-            $platform->registerDoctrineTypeMapping($dbType, $doctrineType);
-        }
-
-        $columns = $this->schemaManager->listTableColumns($tableName);
+        $columns = Schema::getColumns($tableName);
 
         $this->columns = [];
         foreach ($columns as $column) {
-            if (!in_array($column->getName(), $ignoredFields)) {
+            if (!in_array($column, $ignoredFields)) {
                 $this->columns[] = $column;
             }
         }
@@ -170,11 +153,23 @@ class TableFieldsGenerator
      *
      * @return string|null The column name of the (simple) primary key
      */
-    public function getPrimaryKeyOfTable($tableName)
-    {
-        $column = $this->schemaManager->listTableDetails($tableName)->getPrimaryKey();
+    public function getPrimaryKeyOfTable($tableName) {
 
-        return $column ? $column->getColumns()[0] : '';
+        $column = '';
+
+        $indexes = Schema::getIndexes($tableName);
+
+        foreach ($indexes as $index) {
+
+            if ($index['name'] == 'primary') {
+
+                $column = $index['columns'][0];
+
+                break;
+            }
+        }
+
+        return $column;
     }
 
     /**
@@ -206,17 +201,17 @@ class TableFieldsGenerator
     private function generateIntFieldInput($column, $dbType)
     {
         $field = new GeneratorField();
-        $field->name = $column->getName();
+        $field->name = $column['name'];
         $field->parseDBType($dbType);
         $field->htmlType = 'number';
 
-        if ($column->getAutoincrement()) {
+        if ($column['auto_increment']) {
             $field->dbInput .= ',true';
         } else {
             $field->dbInput .= ',false';
         }
 
-        if ($column->getUnsigned()) {
+        if (Str::contains($column['type'], 'unsigned')) {
             $field->dbInput .= ',true';
         }
 
@@ -256,7 +251,7 @@ class TableFieldsGenerator
     private function generateField($column, $dbType, $htmlType)
     {
         $field = new GeneratorField();
-        $field->name = $column->getName();
+        $field->name = $column['name'];
         $field->parseDBType($dbType, $column);
         $field->parseHtmlInput($htmlType);
 
@@ -301,25 +296,25 @@ class TableFieldsGenerator
      */
     public function prepareForeignKeys()
     {
-        $tables = $this->schemaManager->listTables();
+        $tables = Schema::getTables();
 
         $fields = [];
 
         foreach ($tables as $table) {
-            $primaryKey = $table->getPrimaryKey();
-            if ($primaryKey) {
-                $primaryKey = $primaryKey->getColumns()[0];
-            }
+
+            $primaryKey = $this->getPrimaryKeyOfTable($table['name']);
+
             $formattedForeignKeys = [];
-            $tableForeignKeys = $table->getForeignKeys();
+            $tableForeignKeys = Schema::getForeignKeys($table['name']);
             foreach ($tableForeignKeys as $tableForeignKey) {
+
                 $generatorForeignKey = new GeneratorForeignKey();
-                $generatorForeignKey->name = $tableForeignKey->getName();
-                $generatorForeignKey->localField = $tableForeignKey->getLocalColumns()[0];
-                $generatorForeignKey->foreignField = $tableForeignKey->getForeignColumns()[0];
-                $generatorForeignKey->foreignTable = $tableForeignKey->getForeignTableName();
-                $generatorForeignKey->onUpdate = $tableForeignKey->onUpdate();
-                $generatorForeignKey->onDelete = $tableForeignKey->onDelete();
+                $generatorForeignKey->name = $tableForeignKey['name'];
+                $generatorForeignKey->localField = $tableForeignKey['columns'][0];
+                $generatorForeignKey->foreignField = $tableForeignKey['foreign_columns'][0];
+                $generatorForeignKey->foreignTable = $tableForeignKey['foreign_table'];
+                $generatorForeignKey->onUpdate = $tableForeignKey['on_update'];
+                $generatorForeignKey->onDelete = $tableForeignKey['on_delete'];
 
                 $formattedForeignKeys[] = $generatorForeignKey;
             }
@@ -328,7 +323,7 @@ class TableFieldsGenerator
             $generatorTable->primaryKey = $primaryKey;
             $generatorTable->foreignKeys = $formattedForeignKeys;
 
-            $fields[$table->getName()] = $generatorTable;
+            $fields[$table['name']] = $generatorTable;
         }
 
         return $fields;

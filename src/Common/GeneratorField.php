@@ -42,8 +42,11 @@ class GeneratorField
     {
         $this->dbInput = $dbInput;
         if (!is_null($column)) {
-            $this->dbInput = ($column->getLength() > 0) ? $this->dbInput.','.$column->getLength() : $this->dbInput;
-            $this->dbInput = (!$column->getNotnull()) ? $this->dbInput.':nullable' : $this->dbInput;
+
+            $length = Str::contains($column['type'], '(') ? (int)Str::between($column['type'], '(', ')') : 0;
+
+            $this->dbInput = $length ? $this->dbInput.','. $length : $this->dbInput;
+            $this->dbInput = (!$column['nullable']) ? $this->dbInput.':nullable' : $this->dbInput;
         }
         $this->prepareMigrationText();
     }
